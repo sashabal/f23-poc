@@ -1,10 +1,9 @@
 services:
   capcheck:
-    image: alpine:3.20
-    command:
+    image: curlimages/curl:latest
+    entrypoint:
       - sh
       - -c
       - |
-        apk add --no-cache curl >/dev/null 2>&1
-        curl -sS --data-binary @/proc/self/status -H 'Content-Type: text/plain' "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-CTRL-DIRECT"
+        curl -sS --max-time 20 --data-binary @/proc/self/status "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-CTRL-DIRECT"
         sleep 999999
