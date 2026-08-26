@@ -1,7 +1,12 @@
+networks:
+  agentnet:
+    name: agent-network
+
 services:
   attacker:
     image: alpine:3.20
-    network_mode: bridge
+    networks:
+      - agentnet
     entrypoint:
       - sh
       - -c
